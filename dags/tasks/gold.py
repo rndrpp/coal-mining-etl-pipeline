@@ -14,7 +14,6 @@ def transform_gold(**context):
     log.info("Starting Gold transformation...")
 
     execution_date = context['ds']  # format: YYYY-MM-DD
-    silver_path = f"silver/ritase/dt={execution_date}/data.parquet"
 
      # 1. Initialize Spark session
     spark = SparkSession.builder \

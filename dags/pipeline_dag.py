@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -6,6 +7,19 @@ from tasks.silver import transform_silver
 from tasks.gold import transform_gold
 from tasks.load_postgres import load_postgres
 
+log = logging.getLogger(__name__)
+
+
+def alert_on_failure(context):
+    """Central failure hook. Wire a Slack/email/PagerDuty call here when a channel is available."""
+    task_instance = context['task_instance']
+    log.error(
+        "Task failed: dag=%s task=%s execution_date=%s log_url=%s",
+        task_instance.dag_id,
+        task_instance.task_id,
+        context['ds'],
+        task_instance.log_url,
+    )
 
 
 default_args = {
@@ -14,6 +28,7 @@ default_args = {
     'retry_delay': timedelta(minutes=5),
     'email_on_failure': False,
     'email_on_retry': False,
+    'on_failure_callback': alert_on_failure,
 }
 
 with DAG(

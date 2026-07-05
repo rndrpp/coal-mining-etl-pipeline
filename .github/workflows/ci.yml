@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    env:
+      AIRFLOW_HOME: /home/runner/airflow
+      MINIO_ACCESS_KEY: dummy
+      MINIO_SECRET_KEY: dummy
+      DWH_PASSWORD: dummy
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r docker/airflow/requirements.txt -r requirements-dev.txt
+
+      - name: Lint with ruff
+        run: ruff check dags tests
+
+      - name: Run tests
+        run: pytest -v

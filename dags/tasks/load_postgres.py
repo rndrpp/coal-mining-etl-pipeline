@@ -35,6 +35,18 @@ def load_postgres(**context):
     conn.autocommit = False
     cursor = conn.cursor()
 
+    try:
+        _load(conn, cursor, execution_date)
+    except Exception:
+        conn.rollback()
+        log.exception("Load to PostgreSQL failed, transaction rolled back.")
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def _load(conn, cursor, execution_date):
     # 2. Create table if not exists
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS gold_shift_production (
@@ -102,56 +114,54 @@ def load_postgres(**context):
         .config("spark.hadoop.fs.s3a.path.style.access", "true") \
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
         .getOrCreate()
-    
-    df_shift = spark.read.parquet(f"s3a://{MINIO_BUCKET}/gold/shift_production/dt={execution_date}/data.parquet")
-    df_daily = spark.read.parquet(f"s3a://{MINIO_BUCKET}/gold/daily_production/dt={execution_date}/data.parquet")
-    df_equipment = spark.read.parquet(f"s3a://{MINIO_BUCKET}/gold/equipment_performance/dt={execution_date}/data.parquet")
-    df_route = spark.read.parquet(f"s3a://{MINIO_BUCKET}/gold/route_summary/dt={execution_date}/data.parquet")
-    df_supervisor = spark.read.parquet(f"s3a://{MINIO_BUCKET}/gold/supervisor_performance/dt={execution_date}/data.parquet")
 
+    try:
+        df_shift = spark.read.parquet(f"s3a://{MINIO_BUCKET}/gold/shift_production/dt={execution_date}/data.parquet")
+        df_daily = spark.read.parquet(f"s3a://{MINIO_BUCKET}/gold/daily_production/dt={execution_date}/data.parquet")
+        df_equipment = spark.read.parquet(f"s3a://{MINIO_BUCKET}/gold/equipment_performance/dt={execution_date}/data.parquet")
+        df_route = spark.read.parquet(f"s3a://{MINIO_BUCKET}/gold/route_summary/dt={execution_date}/data.parquet")
+        df_supervisor = spark.read.parquet(f"s3a://{MINIO_BUCKET}/gold/supervisor_performance/dt={execution_date}/data.parquet")
 
-    log.info(f"Read Gold: shift={df_shift.count()}, daily={df_daily.count()}, equipment={df_equipment.count()}, route={df_route.count()}, supervisor={df_supervisor.count()} rows.")
-    
-    # 4. Upsert data into PostgreSQL
-    def upsert(df, table, conflict_cols, update_cols):
-        rows = df.collect()
-        if not rows:
-            log.info(f"No data to upsert for table {table}.")
-            return
-        
-        cols = df.columns
-        values = [tuple(row) for row in rows]
+        log.info(f"Read Gold: shift={df_shift.count()}, daily={df_daily.count()}, equipment={df_equipment.count()}, route={df_route.count()}, supervisor={df_supervisor.count()} rows.")
 
-        conflict = ', '.join(conflict_cols)
-        update = ', '.join([f"{col} = EXCLUDED.{col}" for col in update_cols])
+        # 4. Upsert data into PostgreSQL
+        def upsert(df, table, conflict_cols, update_cols):
+            rows = df.collect()
+            if not rows:
+                log.info(f"No data to upsert for table {table}.")
+                return
 
-        sql = f"""
-            INSERT INTO {table} ({', '.join(cols)})
-            VALUES %s
-            ON CONFLICT ({conflict}) DO UPDATE SET {update};
-        """
-        execute_values(cursor, sql, values)
-        conn.commit()
-        log.info(f"Upserted {len(values)} records into {table}.")
-    
-    upsert(df_shift, 'gold_shift_production', 
-           conflict_cols=['operation_date', 'work_shift', 'material_group'], 
-           update_cols=['total_volume_bcm', 'total_trips', 'avg_volume_per_trip', 'total_distance_m'])
-    upsert(df_daily, 'gold_daily_production', 
-           conflict_cols=['operation_date', 'material_group'], 
-           update_cols=['total_volume_bcm', 'total_trips', 'avg_volume_per_trip', 'total_distance_m'])
-    upsert(df_equipment, 'gold_equipment_performance', 
-           conflict_cols=['operation_date', 'excavator_code'], 
-           update_cols=['total_volume_bcm', 'total_trips', 'avg_volume_per_trip', 'total_trucks_used'])
-    upsert(df_route, 'gold_route_summary',
-       conflict_cols=['operation_date', 'loading_area', 'dumping_area', 'material_group'],
-       update_cols=['total_volume_bcm', 'total_trips', 'avg_hauling_distance_m', 'total_distance_m'])
-    upsert(df_supervisor, 'gold_supervisor_performance',
-        conflict_cols=['operation_date', 'supervisor_name'],
-        update_cols=['total_volume_bcm', 'total_trips', 'total_excavators', 'total_trucks'])
-    
-    
-    spark.stop()
-    cursor.close()
-    conn.close()
-    log.info("Load to PostgreSQL complete.")
+            cols = df.columns
+            values = [tuple(row) for row in rows]
+
+            conflict = ', '.join(conflict_cols)
+            update = ', '.join([f"{col} = EXCLUDED.{col}" for col in update_cols])
+
+            sql = f"""
+                INSERT INTO {table} ({', '.join(cols)})
+                VALUES %s
+                ON CONFLICT ({conflict}) DO UPDATE SET {update};
+            """
+            execute_values(cursor, sql, values)
+            conn.commit()
+            log.info(f"Upserted {len(values)} records into {table}.")
+
+        upsert(df_shift, 'gold_shift_production',
+               conflict_cols=['operation_date', 'work_shift', 'material_group'],
+               update_cols=['total_volume_bcm', 'total_trips', 'avg_volume_per_trip', 'total_distance_m'])
+        upsert(df_daily, 'gold_daily_production',
+               conflict_cols=['operation_date', 'material_group'],
+               update_cols=['total_volume_bcm', 'total_trips', 'avg_volume_per_trip', 'total_distance_m'])
+        upsert(df_equipment, 'gold_equipment_performance',
+               conflict_cols=['operation_date', 'excavator_code'],
+               update_cols=['total_volume_bcm', 'total_trips', 'avg_volume_per_trip', 'total_trucks_used'])
+        upsert(df_route, 'gold_route_summary',
+           conflict_cols=['operation_date', 'loading_area', 'dumping_area', 'material_group'],
+           update_cols=['total_volume_bcm', 'total_trips', 'avg_hauling_distance_m', 'total_distance_m'])
+        upsert(df_supervisor, 'gold_supervisor_performance',
+            conflict_cols=['operation_date', 'supervisor_name'],
+            update_cols=['total_volume_bcm', 'total_trips', 'total_excavators', 'total_trucks'])
+
+        log.info("Load to PostgreSQL complete.")
+    finally:
+        spark.stop()

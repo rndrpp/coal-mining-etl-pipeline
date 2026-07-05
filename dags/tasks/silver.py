@@ -48,10 +48,10 @@ def transform_silver(**context):
     # 3c. Flag and separate rejected rows (e.g., rows with missing critical fields)
     df = df.withColumn('is_valid', F.when(F.col('production_volume_bcm') < 0, False).otherwise(True))
 
-    invalid_count = df.filter(F.col('is_valid') == False).count()
+    invalid_count = df.filter(~F.col('is_valid')).count()
     log.info(f"Found {invalid_count} invalid rows based on production_volume_bcm.")
 
-    df = df.filter(F.col('is_valid') == True).drop('is_valid')
+    df = df.filter(F.col('is_valid')).drop('is_valid')
 
     # 3d. Standarize string fields to uppercase
     string_cols = ['work_shift', 'material_code', 'material_group', 
