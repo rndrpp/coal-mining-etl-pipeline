@@ -16,13 +16,13 @@ def test_no_import_errors():
 
 def test_pipeline_dag_loaded():
     dagbag = _load_dagbag()
-    dag = dagbag.get_dag("coal_pipeline")
+    dag = dagbag.dags.get("coal_pipeline")
     assert dag is not None
 
 
 def test_pipeline_dag_task_order():
     dagbag = _load_dagbag()
-    dag = dagbag.get_dag("coal_pipeline")
+    dag = dagbag.dags["coal_pipeline"]
 
     task_ids = [task.task_id for task in dag.tasks]
     assert task_ids == [
@@ -44,7 +44,7 @@ def test_pipeline_dag_task_order():
 
 def test_pipeline_dag_has_retries_and_failure_callback():
     dagbag = _load_dagbag()
-    dag = dagbag.get_dag("coal_pipeline")
+    dag = dagbag.dags["coal_pipeline"]
 
     assert dag.default_args.get("retries", 0) > 0
     assert dag.default_args.get("on_failure_callback") is not None
