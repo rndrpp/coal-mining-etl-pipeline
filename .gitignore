@@ -1,0 +1,23 @@
+# Secrets - NEVER commit these
+.env
+
+# Airflow
+logs/
+airflow.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Data files
+data/*.xlsx
+data/*.csv
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings
+.claude/settings.local.json

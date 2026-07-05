@@ -1,0 +1,13 @@
+# Excel reading
+openpyxl==3.1.2
+
+# Data processing
+pandas==2.1.4
+pyarrow==14.0.2
+pyspark==3.5.1
+
+# MinIO client
+minio==7.2.3
+
+# PostgreSQL
+psycopg2-binary==2.9.9
